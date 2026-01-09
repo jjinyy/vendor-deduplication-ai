@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+process_log*.txt
+*.txt
+!requirements.txt
+
+# Data files (큰 데이터 파일은 제외)
+# bio_vendor.csv
+
+# Results
+*.xlsx
+!*.xlsx.example
+
+# Temporary files
+*.tmp
+*.bak
+
