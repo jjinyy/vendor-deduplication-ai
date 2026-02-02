@@ -50,3 +50,4 @@ class DataLoader:
             raise ValueError("데이터가 로드되지 않았습니다. load() 메서드를 먼저 호출하세요.")
         return self.df
 
+

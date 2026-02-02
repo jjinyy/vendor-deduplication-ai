@@ -106,47 +106,91 @@ class DataMerger:
             if len(codes) > 1:
                 merged_row['공급업체코드'] = ', '.join(set(codes))
         
-        # 중복 그룹 정보 추가
-        merged_row['_duplicate_count'] = len(group_indices)
-        merged_row['_merged_from_indices'] = ', '.join(map(str, group_indices))
+        # 중복 그룹 정보 추가 (병합 시에만 사용, 실제 결과에는 추가하지 않음)
+        # merged_row['_duplicate_count'] = len(group_indices)
+        # merged_row['_merged_from_indices'] = ', '.join(map(str, group_indices))
         
         return merged_row
     
     def merge_duplicates(self, df: pd.DataFrame, duplicate_groups: List[List[int]]) -> pd.DataFrame:
         """
-        중복 그룹들을 병합하여 새로운 DataFrame 생성
+        중복 그룹에 그룹번호를 부여하여 DataFrame 생성 (병합하지 않고 원본 행 유지)
+        기존 호환성을 위한 함수 (STEP2만 사용)
         
         Args:
             df: 원본 DataFrame
-            duplicate_groups: 중복 그룹 리스트
+            duplicate_groups: 중복 그룹 리스트 (STEP2 최종 그룹)
             
         Returns:
-            병합된 DataFrame
+            그룹번호가 추가된 DataFrame (원본 행 유지)
         """
-        # 중복 그룹에 포함된 모든 인덱스
-        duplicate_indices = set()
-        for group in duplicate_groups:
-            duplicate_indices.update(group)
+        return self.merge_duplicates_2step(df, [], duplicate_groups)
+    
+    def merge_duplicates_2step(self, df: pd.DataFrame, candidate_groups: List[List[int]], final_groups: List[List[int]]) -> pd.DataFrame:
+        """
+        2단계 중복 그룹에 그룹번호를 부여하여 DataFrame 생성 (GPT 프롬프트 기반)
         
-        # 중복이 아닌 행들
-        non_duplicate_rows = df[~df.index.isin(duplicate_indices)].copy()
-        
-        # 각 중복 그룹을 병합
-        merged_rows = []
-        for group in duplicate_groups:
-            merged_row = self.merge_group(df, group)
-            merged_rows.append(merged_row)
-        
-        # 병합된 행들을 DataFrame으로 변환
-        if merged_rows:
-            merged_df = pd.DataFrame(merged_rows)
-            # 인덱스 재설정
-            merged_df.reset_index(drop=True, inplace=True)
+        Args:
+            df: 원본 DataFrame
+            candidate_groups: STEP1 후보 그룹 리스트
+            final_groups: STEP2 최종 중복 그룹 리스트
             
-            # 중복이 아닌 행들과 병합
-            result_df = pd.concat([non_duplicate_rows, merged_df], ignore_index=True)
-        else:
-            result_df = non_duplicate_rows.copy()
+        Returns:
+            그룹번호_STEP1, 그룹번호_STEP2가 추가된 DataFrame (원본 행 유지)
+        """
+        # 결과 DataFrame 복사
+        result_df = df.copy()
+        
+        # 그룹번호 초기화
+        result_df['그룹번호_STEP1'] = None
+        result_df['그룹번호_STEP2'] = None
+        
+        # STEP1: 후보 그룹에 그룹번호 부여
+        step1_group_num = 1
+        step1_indices = set()
+        for group in candidate_groups:
+            for idx in group:
+                result_df.loc[idx, '그룹번호_STEP1'] = step1_group_num
+                step1_indices.add(idx)
+            step1_group_num += 1
+        
+        # STEP2: 최종 중복 그룹에 그룹번호 부여
+        step2_group_num = 1
+        step2_indices = set()
+        for group in final_groups:
+            for idx in group:
+                result_df.loc[idx, '그룹번호_STEP2'] = step2_group_num
+                step2_indices.add(idx)
+            step2_group_num += 1
+        
+        # STEP1 후보이지만 STEP2 최종이 아닌 행들에 고유한 그룹번호 부여
+        step1_only_indices = step1_indices - step2_indices
+        for idx in step1_only_indices:
+            if pd.isna(result_df.loc[idx, '그룹번호_STEP1']):
+                result_df.loc[idx, '그룹번호_STEP1'] = step1_group_num
+                step1_group_num += 1
+        
+        # 중복이 아닌 행들에 고유한 그룹번호 부여
+        non_candidate_indices = result_df[~result_df.index.isin(step1_indices)].index
+        for idx in non_candidate_indices:
+            result_df.loc[idx, '그룹번호_STEP1'] = step1_group_num
+            result_df.loc[idx, '그룹번호_STEP2'] = step2_group_num
+            step1_group_num += 1
+            step2_group_num += 1
+        
+        # _duplicate_count 컬럼 추가 (STEP2 최종 그룹의 행 수)
+        result_df['_duplicate_count'] = None
+        for group in final_groups:
+            group_size = len(group)
+            for idx in group:
+                result_df.loc[idx, '_duplicate_count'] = group_size
+        
+        # 그룹번호 컬럼들을 맨 앞으로 이동
+        cols = ['그룹번호_STEP1', '그룹번호_STEP2'] + [col for col in result_df.columns if col not in ['그룹번호_STEP1', '그룹번호_STEP2']]
+        result_df = result_df[cols]
+        
+        # 인덱스 재설정
+        result_df.reset_index(drop=True, inplace=True)
         
         return result_df
 

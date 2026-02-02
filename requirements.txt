@@ -5,6 +5,7 @@ rapidfuzz>=3.0.0
 numpy>=1.24.0
 pypinyin>=0.48.0
 pykakasi>=2.2.0
+korean-romanizer>=0.1.1
 
 # 의미 기반 임베딩 (하이브리드 버전용 - 선택사항)
 # pip install sentence-transformers torch
