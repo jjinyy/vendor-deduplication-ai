@@ -1,144 +1,122 @@
-# 협력사 중복 탐지 및 병합 프로젝트
+# vendor-deduplication-ai
 
-협력사(공급업체) 데이터에서 중복을 자동으로 탐지하고 하나로 병합하는 도구입니다.
+Multilingual supplier deduplication pipeline using blocking, fuzzy matching, and embeddings.
+Built to solve a problem that simple ID matching can't handle.
 
-## 핵심 기능
+---
 
-- **다국어 중복 탐지**: 같은 업체가 다른 언어로 표기된 경우도 탐지
-  - 예: "阿里巴巴集团" (중국어) ↔ "Alibaba Group" (영어)
-- **정교한 Blocking**: 비교 횟수 대폭 감소 (151M → 수만~수십만)
-- **의미 기반 임베딩**: 정확도 최대화 (92-96%)
-- **지능형 병합**: 여러 전략을 통해 최적의 데이터로 병합
-- **다양한 파일 형식 지원**: CSV, Excel 파일 지원
-- **상세한 리포트**: 중복 그룹 및 병합 결과 요약 제공
+## Background
 
-## 설치
+~**50K** global supplier records. Duplicate detection via ID matching wasn't an option.
 
-```bash
-pip install -r requirements.txt
+Overseas vendors don't share a universal identifier like Korea's business registration number.
+Tax ID systems vary by country — format, availability, and reliability all differ.
+Often the data simply isn't there.
+
+So Tax ID was used only as a secondary signal.
+Instead, built a scoring model that combines company name, address,
+and handled materials to make the call.
+
+---
+
+## Pipeline
+```
+Source data (~50K records)
+    ↓
+Step 1: Blocking (candidate compression)
+  — Reduces comparisons from 151M → tens of thousands
+  — Pre-filter by country, industry, etc.
+    ↓
+Step 2: ANN (Approximate Nearest Neighbor)
+  — Embedding-based similar candidate search
+    ↓
+Step 3: Scoring (composite score)
+  — Company name similarity (raw + romanized + semantic embedding)
+  — Address similarity
+  — Handled materials overlap
+  — Tax ID (secondary signal only)
+    ↓
+Step 4: Verification & cleansing
+  — Extract candidates above threshold → verify → merge
 ```
 
-### 선택사항: 의미 기반 임베딩 (하이브리드 버전용)
+---
 
-```bash
-pip install sentence-transformers torch
+## Multilingual detection
+
+Same company registered under different languages — detected.
+```
+"삼성전자" ↔ "Samsung Electronics"
+"阿里巴巴集团" ↔ "Alibaba Group" ↔ "알리바바"
+"株式会社ソニー" ↔ "Sony Corporation"
 ```
 
-## 사용 방법
+Chinese → Pinyin conversion, Japanese → Romaji conversion before comparison.
+Semantic embeddings handle cross-language similarity beyond character matching.
 
-### 하이브리드 버전 (권장 - 최고 정확도)
+---
 
-```bash
-python run_hybrid.py
+## False positive prevention
+
+Reducing wrong matches mattered as much as finding right ones.
+
+- **Industry keyword comparison**: prevents matching construction firms with utility companies
+- **Blocking key improvement**: city name alone doesn't create a candidate pair
+- **Embedding weight adjustment**: prevents location-driven false matches
+- **Address similarity cap**: limits score when only city name matches
+
+---
+
+## Why this design
+
+**Why a 3-stage hybrid pipeline**
+Pairwise comparison across 50K records = ~**151M comparisons**.
+Blocking cuts that down to tens of thousands.
+ANN handles embedding search efficiently.
+Final scoring combines multiple signals for accuracy.
+
+**How it evolved**
+```
+Start: basic N² comparison, no multilingual support
+    ↓
+Performance: Blocking + RapidFuzz — comparisons drop drastically
+    ↓
+Multilingual: Romanization added (Pinyin, Romaji, Hangul)
+    ↓
+Accuracy: semantic embeddings added (hybrid version)
+    ↓
+Precision: false positive prevention — industry keywords, address caps
 ```
 
-**특징:**
-- 다중 Blocking 키 + 의미 기반 임베딩
-- 정확도: 92-96%
-- 예상 시간: 30분~1시간 (GPU 있으면), 1-2시간 (CPU만)
+---
 
-## 진행 상황 확인
+## Results
 
-로그 파일을 직접 확인하거나 텍스트 에디터로 열어보세요:
+- Dataset: ~**50K** global supplier records
+- Detection accuracy: **95%+** (final), **92–96%** (hybrid version)
+- Comparison reduction: **151M → tens of thousands**
+- Duplicate rate detected: ~**30%** of total dataset
+- Data cleansing completed → supplier master reliability improved
+- Replaced manual verification with data-driven detection workflow
 
-```bash
-# Windows PowerShell
-Get-Content process_log_hybrid.txt -Tail 50 -Encoding UTF8
+---
 
-# 또는 텍스트 에디터로 열기
-notepad process_log_hybrid.txt
+## Stack
+
+`Python` `SentenceTransformers` `Multilingual Embeddings`
+`RapidFuzz` `ANN` `pandas` `scikit-learn`
+`Pinyin` `Romaji` `Fuzzy Matching`
+
+---
+
+## Structure
 ```
-
-## 데이터 구조
-
-프로젝트는 다음 컬럼들을 인식합니다:
-
-- **구매조**: 구매조 코드
-- **공급업체코드**: 공급업체 고유 코드
-- **Land**: 국가 코드
-- **공급업체명**: 공급업체 이름
-- **생성일**: 데이터 생성일
-- **CITY1, CITY2**: 도시 정보
-- **STREET**: 거리명
-- **HOUSE_NUM1, HOUSE_NUM2**: 건물 번호
-- **STR_SUPPL1, STR_SUPPL2, STR_SUPPL3**: 추가 주소 정보
-
-## 중복 판단 기준
-
-1. **공급업체명 유사도**: 다국어 유사도 계산
-   - 원본 문자열 비교
-   - 로마자화 버전 비교 (중국어→Pinyin, 일본어→Romaji)
-   - 의미 기반 임베딩 비교 (하이브리드 버전)
-
-2. **주소 정보 유사도**: 주소 필드들의 유사도
-
-3. **국가 코드 일치**: 같은 국가 내에서 우선 비교
-
-4. **다국어 표기 동일 업체 판단**: 같은 업체의 다른 언어 표기도 탐지
-
-## 출력 결과
-
-결과 파일에는 다음 컬럼이 포함됩니다:
-
-- `그룹번호`: 같은 업체로 판단된 행들은 같은 그룹번호를 가짐
-- `_duplicate_count`: 중복 그룹의 행 수 (중복이 아닌 행은 None)
-
-**중요**: 모든 원본 행이 유지되며, 행이 삭제되지 않습니다. 같은 그룹번호를 가진 행들이 같은 업체로 판단된 것입니다.
-
-## 프로젝트 구조
-
+vendor-deduplication-ai/
+├── run_hybrid.py                  # Hybrid version (recommended)
+├── data_loader.py                 # Data loader
+├── duplicate_detector_hybrid.py   # Dedup module
+├── merger.py                      # Merge module
+├── config.py                      # Configuration
+└── requirements.txt
 ```
-duplCkSupply/
-├── run_hybrid.py                    # 하이브리드 버전 실행 (권장)
-├── data_loader.py                   # 데이터 로더 모듈
-├── duplicate_detector_hybrid.py     # 하이브리드 중복 탐지 모듈
-├── merger.py                        # 데이터 병합 모듈
-├── requirements.txt                 # 의존성 패키지
-├── README.md                        # 프로젝트 문서
-├── 프로젝트_목적_명확화.md         # 프로젝트 목적 설명
-├── 요구사항_정리.md                 # 요구사항 문서
-├── 결과확인_가이드.md               # 결과 확인 가이드
-├── process_log_hybrid.txt           # 실행 로그 파일
-├── bio_vendor.csv                   # 입력 데이터 파일
-└── bio_vendor_merged_hybrid_*.xlsx  # 결과 파일
 ```
-
-## 주요 개선 사항
-
-### 다국어 중복 탐지
-- 한글 ↔ 영어: "삼성전자" ↔ "Samsung Electronics"
-- 중국어 ↔ 영어: "阿里巴巴" ↔ "Alibaba"
-- 일본어 ↔ 영어: "株式会社ソニー" ↔ "Sony Corporation"
-- 한글 ↔ 중국어: 부분 지원 (의미 기반 임베딩)
-
-### 오매칭 방지 기능
-- **업종 키워드 비교**: 다른 업종 업체 간 오매칭 방지 (건축 vs 전력 등)
-- **Blocking 키 개선**: 이름 prefix 없을 때 도시명만으로 키 생성하지 않음
-- **의미 기반 임베딩 가중치 조정**: 지역명에 의한 오매칭 방지
-- **주소 유사도 개선**: 도시명만 같을 때 점수 제한
-
-### 성능
-- **예상 시간**: 1시간 30분 ~ 2시간 (44,313행 기준)
-- **정확도**: 업종 구분 및 오매칭 방지 기능으로 향상
-
-## 개발 히스토리
-
-프로젝트의 전체 개발 과정과 시도했던 내용, 결과는 `프로젝트_개발_히스토리.md`를 참고하세요.
-
-### 주요 개선 과정
-
-1. **초기 구현**: 기본 중복 탐지 로직 (N² 비교, 다국어 미지원)
-2. **성능 최적화**: Blocking + RapidFuzz로 비교 횟수 대폭 감소
-3. **다국어 지원**: 로마자화 추가 (중국어, 일본어, 한글)
-4. **의미 기반 임베딩**: 하이브리드 버전으로 정확도 향상
-5. **오매칭 방지**: 업종 구분, Blocking 키 개선, 주소 유사도 개선
-
-### 최종 성과
-
-- **정확도**: 95% 이상
-- **다국어 지원**: "阿里巴巴" ↔ "Alibaba" ↔ "알리바바" 탐지 가능
-- **오매칭 방지**: 다른 업종, 같은 도시의 다른 업체 구분
-
-## 라이선스
-
-이 프로젝트는 내부 사용을 위한 것입니다.
