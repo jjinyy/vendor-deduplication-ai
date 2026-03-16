@@ -40,6 +40,14 @@ process_log*.txt
 *.txt
 !requirements.txt
 
+# 기준정보(큰 파일은 제외하고 싶으면 아래 주석 해제)
+# data/*.csv
+# data/*.xlsx
+
+# Output (실행 시 생성 — Git에 올리지 않음)
+output/*
+!output/.gitkeep
+
 # Data files (큰 데이터 파일은 제외)
 # bio_vendor.csv
 
@@ -50,5 +58,7 @@ process_log*.txt
 # Temporary files
 *.tmp
 *.bak
+
+
 
 
